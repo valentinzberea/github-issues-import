@@ -228,7 +228,10 @@ def get_labels(which):
 	return send_request(which, "labels")
 	
 def get_issue_by_id(which, issue_id):
-	return send_request(which, "issues/%d" % issue_id)
+	issue = send_request(which, "issues/%d" % issue_id)
+	if issue['milestone'] is not None:
+		issue['milestone'] = issue['milestone']['number']
+	return issue
 
 def get_issues_by_id(which, issue_ids):
 	# Populate issues based on issue IDs
