@@ -64,6 +64,7 @@ def init_config():
 	include_group.add_argument("--open", dest='import_open', action='store_true', help="Import only open issues.")
 	include_group.add_argument("--closed", dest='import_closed', action='store_true', help="Import only closed issues.")
 	include_group.add_argument("-i", "--issues", type=int, nargs='+', help="The list of issues to import.");
+	include_group.add_argument("-r", "--issues-range", dest='range', help="The list of issues to import.");
 
 	args = arg_parser.parse_args()
 	
@@ -106,8 +107,8 @@ def init_config():
 	config.set('settings', 'import-milestone', str(not args.ignore_milestone))
 	config.set('settings', 'import-labels',    str(not args.ignore_labels))
 	
-	config.set('settings', 'import-open-issues',   str(args.import_all or args.import_open));
-	config.set('settings', 'import-closed-issues', str(args.import_all or args.import_closed));
+	config.set('settings', 'import-open-issues',   str(args.import_all or args.import_open or (args.range is not None)));
+	config.set('settings', 'import-closed-issues', str(args.import_all or args.import_closed or (args.range is not None)));
 	
 	
 	# Make sure no required config values are missing
@@ -158,7 +159,13 @@ def init_config():
 	get_credentials_for('target')
 	
 	# Everything is here! Continue on our merry way...
-	return args.issues or []
+	if args.issues:
+		return args.issues
+
+	if args.range:
+		return args.range
+
+	return []
 
 def format_date(datestring):
 	# The date comes from the API in ISO-8601 format
@@ -228,10 +235,7 @@ def get_labels(which):
 	return send_request(which, "labels")
 	
 def get_issue_by_id(which, issue_id):
-	issue = send_request(which, "issues/%d" % issue_id)
-	if issue['milestone'] is not None:
-		issue['milestone'] = issue['milestone']['number']
-	return issue
+	return send_request(which, "issues/%d" % issue_id)
 
 def get_issues_by_id(which, issue_ids):
 	# Populate issues based on issue IDs
@@ -242,14 +246,16 @@ def get_issues_by_id(which, issue_ids):
 	return issues
 
 # Allowed values for state are 'open' and 'closed'
-def get_issues_by_state(which, state):
+def get_issues_by_state(which, state, issue_ids):
 	issues = []
 	page = 1
 	while True:
 		new_issues = send_request(which, "issues?state=%s&direction=asc&page=%d" % (state, page))
 		if not new_issues:
 			break
-		issues.extend(new_issues)
+		for issue in new_issues:
+			if issue_ids == [] or issue['number'] in issue_ids:
+				issues.append(issue)
 		page += 1
 	return issues
 
@@ -337,13 +343,13 @@ def import_issues(issues):
 		if config.getboolean('settings', 'import-milestone') and 'milestone' in issue and issue['milestone'] is not None:
 			# Since the milestones' ids are going to differ, we will compare them by title instead
 			found_milestone = get_milestone_by_title(issue['milestone']['title'])
-			if found_milestone:
-				new_issue['milestone_object'] = found_milestone
-			else:
+			if not found_milestone:
 				new_milestone = issue['milestone']
-				new_issue['milestone_object'] = new_milestone
 				known_milestones.append(new_milestone) # Allow it to be found next time
 				new_milestones.append(new_milestone)   # Put it in a queue to add it later
+
+		if issue['milestone']:
+			new_issue['milestone'] = issue['milestone']['number']
 		
 		if config.getboolean('settings', 'import-labels') and 'labels' in issue and issue['labels'] is not None:
 			new_issue['label_objects'] = []
@@ -394,10 +400,6 @@ def import_issues(issues):
 	result_issues = []
 	for issue in new_issues:
 		
-		if 'milestone_object' in issue:
-			issue['milestone'] = issue['milestone_object']['number']
-			del issue['milestone_object']
-		
 		if 'label_objects' in issue:
 			issue_labels = []
 			for label in issue['label_objects']:
@@ -408,6 +410,8 @@ def import_issues(issues):
 		result_issue = send_request('target', "issues", issue)
 		if 'state' in issue and issue['state'] == 'closed':
 			result_issue['state'] = 'closed'
+			if result_issue['milestone']:
+				result_issue['milestone'] = result_issue['milestone']['number']
 			result_issue = send_request('target', "issues/%s" % result_issue['number'],
 						    result_issue,
 						    method='PATCH')
@@ -436,14 +440,17 @@ if __name__ == '__main__':
 	state.current = state.FETCHING_ISSUES
 	
 	# Argparser will prevent us from getting both issue ids and specifying issue state, so no duplicates will be added
-	if (len(issue_ids) > 0):
+	if (isinstance(issue_ids, list) and len(issue_ids) > 0):
 		issues += get_issues_by_id('source', issue_ids)
-	
+	elif isinstance(issue_ids, str):
+		[start_id, end_id] = [int(n) for n in issue_ids.split('-')]
+		issue_ids = range(start_id, end_id + 1)
+
 	if config.getboolean('settings', 'import-open-issues'):
-		issues += get_issues_by_state('source', 'open')
+		issues += get_issues_by_state('source', 'open', issue_ids)
 	
 	if config.getboolean('settings', 'import-closed-issues'):
-		issues += get_issues_by_state('source', 'closed')
+		issues += get_issues_by_state('source', 'closed', issue_ids)
 	
 	# Sort issues based on their original `id` field
 	# Confusing, but taken from http://stackoverflow.com/a/2878123/617937
