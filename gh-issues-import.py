@@ -343,14 +343,14 @@ def import_issues(issues):
 		if config.getboolean('settings', 'import-milestone') and 'milestone' in issue and issue['milestone'] is not None:
 			# Since the milestones' ids are going to differ, we will compare them by title instead
 			found_milestone = get_milestone_by_title(issue['milestone']['title'])
-			if not found_milestone:
+			if found_milestone:
+				new_issue['milestone_object'] = found_milestone
+			else:
 				new_milestone = issue['milestone']
+				new_issue['milestone_object'] = new_milestone
 				known_milestones.append(new_milestone) # Allow it to be found next time
 				new_milestones.append(new_milestone)   # Put it in a queue to add it later
 
-		if issue['milestone']:
-			new_issue['milestone'] = issue['milestone']['number']
-		
 		if config.getboolean('settings', 'import-labels') and 'labels' in issue and issue['labels'] is not None:
 			new_issue['label_objects'] = []
 			for issue_label in issue['labels']:
@@ -400,6 +400,10 @@ def import_issues(issues):
 	result_issues = []
 	for issue in new_issues:
 		
+		if 'milestone_object' in issue:
+			issue['milestone'] = issue['milestone_object']['number']
+			del issue['milestone_object']
+
 		if 'label_objects' in issue:
 			issue_labels = []
 			for label in issue['label_objects']:
