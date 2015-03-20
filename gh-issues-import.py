@@ -55,6 +55,8 @@ def init_config():
 	arg_parser.add_argument('--ignore-comments',  dest='ignore_comments',  action='store_true', help="Do not import comments in the issue.")		
 	arg_parser.add_argument('--ignore-milestone', dest='ignore_milestone', action='store_true', help="Do not import the milestone attached to the issue.")
 	arg_parser.add_argument('--ignore-labels',    dest='ignore_labels',    action='store_true', help="Do not import labels attached to the issue.")
+
+	arg_parser.add_argument('--use-pickles',    dest='use_pickles',    action='store_true', help="")
 	
 	arg_parser.add_argument('--issue-template', help="Specify a template file for use with issues.")
 	arg_parser.add_argument('--comment-template', help="Specify a template file for use with comments.")
@@ -107,6 +109,8 @@ def init_config():
 	config.set('settings', 'import-comments',  str(not args.ignore_comments))
 	config.set('settings', 'import-milestone', str(not args.ignore_milestone))
 	config.set('settings', 'import-labels',    str(not args.ignore_labels))
+
+	config.set('settings', 'use-pickles',    str(args.use_pickles))
 	
 	config.set('settings', 'import-open-issues',   str(args.import_all or args.import_open or (args.range is not None)));
 	config.set('settings', 'import-closed-issues', str(args.import_all or args.import_closed or (args.range is not None)));
@@ -456,11 +460,16 @@ if __name__ == '__main__':
 		[start_id, end_id] = [int(n) for n in issue_ids.split('-')]
 		issue_ids = range(start_id, end_id + 1)
 
-	if config.getboolean('settings', 'import-open-issues'):
-		issues += get_issues_by_state('source', 'open', issue_ids)
-	
-	if config.getboolean('settings', 'import-closed-issues'):
-		issues += get_issues_by_state('source', 'closed', issue_ids)
+	if config.getboolean('settings', 'use-pickles'):
+		issues = pickle.load(open('issues.p', 'rb'))
+	else:
+		if config.getboolean('settings', 'import-open-issues'):
+			issues += get_issues_by_state('source', 'open', issue_ids)
+		
+		if config.getboolean('settings', 'import-closed-issues'):
+			issues += get_issues_by_state('source', 'closed', issue_ids)
+
+		pickle.dump(issues, open('issues.p', 'wb'))
 	
 	# Sort issues based on their original `id` field
 	# Confusing, but taken from http://stackoverflow.com/a/2878123/617937
