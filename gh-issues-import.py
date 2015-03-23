@@ -7,6 +7,7 @@ import sys, os
 import datetime
 import argparse, configparser
 import pickle
+import time
 
 import query
 
@@ -231,6 +232,13 @@ def send_request(which, url, post_data=None, method=None):
 				error_message += "\nDETAILS: " + error_details['message']
 			sys.exit(error_message)
 	
+	if 'X-RateLimit-Remaining' in response.headers:
+		if int(response.headers['X-RateLimit-Remaining']) == 0:
+			wait = int(response.headers['X-RateLimit-Reset']) - int(time.time())
+			if wait > 0:
+				print('Waiting the rate limits to be reset: %s seconds' % str(wait))
+				time.sleep(wait)
+
 	return json.loads(json_data.decode("utf-8"))
 
 def get_milestones(which):
@@ -421,11 +429,13 @@ def import_issues(issues):
 			issue['labels'] = issue_labels
 			del issue['label_objects']
 		
+		# Create issue
 		result_issue = send_request('target', "issues", issue)
 		if 'state' in issue and issue['state'] == 'closed':
 			result_issue['state'] = 'closed'
 			if result_issue['milestone']:
 				result_issue['milestone'] = result_issue['milestone']['number']
+			# Close issue
 			result_issue = send_request('target', "issues/%s" % result_issue['number'],
 						    result_issue,
 						    method='PATCH')
