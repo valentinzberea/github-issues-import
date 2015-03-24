@@ -402,19 +402,14 @@ def import_issues(issues):
 	
 	state.current = state.IMPORTING
 	
-	pickle.dump(new_issues, open('all_issues_before_milestones.p', 'wb'))
-	pickle.dump(new_milestones, open('all_milestones.p', 'wb'))
 	for milestone in new_milestones:
 		result_milestone = import_milestone(milestone)
 		milestone['number'] = result_milestone['number']
 		milestone['url'] = result_milestone['url']
 	
-	pickle.dump(new_labels, open('all_labels.p', 'wb'))
 	for label in new_labels:
 		result_label = import_label(label)
 	
-	pickle.dump(new_issues, open('all_issues_after_milestones.p', 'wb'))
-
 	result_issues = []
 	for issue in new_issues:
 		
